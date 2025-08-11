@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Henriku Liivimaa kroonika – ajajoon ja kaart (1180–1227)</title>
+  <meta name="description" content="Interaktiivne kaart ja ajajoon Henriku Liivimaa kroonika (1180–1227) põhjal.">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous">
+  <style>
+    :root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--panel:#0b1224;--accent:#60a5fa;}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    #app{display:grid;grid-template-columns:340px 1fr;height:100%}
+    #panel{background:var(--panel);border-right:1px solid #1f2937;padding:14px;overflow:auto}
+    #map{height:100%;width:100%}
+    h1{font-size:18px;margin:4px 0 10px}
+    .muted{color:var(--muted)}
+    .slider-row{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
+    input[type=range]{width:100%}
+    .year{font-weight:800;min-width:62px;text-align:right}
+    .btns{display:flex;gap:8px;margin:6px 0 10px}
+    button{background:#1f2937;border:1px solid #334155;color:#e5e7eb;border-radius:10px;padding:6px 10px}
+    button:hover{filter:brightness(1.1);cursor:pointer}
+    .event-list{margin:10px 0 0;padding:0;list-style:none}
+    .event{padding:8px 10px;border:1px solid #1f2937;border-radius:10px;margin:0 0 8px;background:#111827}
+    .chips{margin-top:4px}
+    .chip{display:inline-block;background:#0b1224;border:1px solid #1f2937;border-radius:999px;padding:3px 8px;margin:4px 6px 0 0;font-size:12px;color:#cbd5e1}
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .legend{position:absolute;right:10px;bottom:10px;background:#ffffff;border-radius:10px;padding:8px 10px;border:1px solid #cbd5e1;color:#111827;font-size:13px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="panel">
+      <div class="topbar">
+        <h1>Henriku kroonika – ajajoon</h1>
+        <a href="index.html">← Avaleht</a>
+      </div>
+      <div class="muted">1180–1227 (valik sündmusi). Lohista aastariba, vajuta Next/Prev või klõpsa kaardimarkeritel.</div>
+      <div class="slider-row">
+        <span class="year" id="yearLabel">1180</span>
+        <input id="year" type="range" min="1180" max="1227" step="1" value="1180">
+      </div>
+      <div class="btns">
+        <button id="prev">Prev</button>
+        <button id="next">Next</button>
+        <button id="showAll">Näita kõiki</button>
+        <button id="reset">Lähtesta</button>
+      </div>
+      <div class="muted" style="margin:6px 0 8px">Sündmused <span id="count"></span></div>
+      <ul class="event-list" id="list"></ul>
+      <div class="muted" style="margin-top:12px">Isikud ja suhted (valik):</div>
+      <div class="chips">
+        <span class="chip">Albert von Buxhövden → Riia piiskop</span>
+        <span class="chip">Lembitu (Sakala) ↔ vastupanu</span>
+        <span class="chip">Valdemar II → Taani retk Tallinna</span>
+        <span class="chip">Andreas Sunesen → peapiiskop, ristisõja jutlustaja</span>
+        <span class="chip">Volkwin → Mõõgavendade ordu</span>
+        <span class="chip">Kaupo (liivlane) → ristiusu toetaja</span>
+      </div>
+    </aside>
+    <main id="map"></main>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+  <script>
+    // --- Andmestik: aasta, pealkiri, kirjeldus, [lat, lon], lisasildid ---
+    const EVENTS = [
+      [1201, "Riia rajamine", "Piiskop Albert rajab Riia ja alustab siit misjonitööd.", [56.9496, 24.1052], ["Albert","Riia"]],
+      [1208, "Esimesed retked Eestisse", "Sakala, Ugandi ja Viru retked; liitlased ja vastased vahelduvad.", [58.3639, 25.5903], ["Sakala","Ugandi"]],
+      [1210, "Ümera lahing", "Eesti väed (peamiselt sakalased) võidavad orduvägesid.", [57.4833, 25.9667], ["Ümera","Sakalased"]],
+      [1217, "Madisepäeva lahing", "Suur kokkupõrge, Lembitu langeb; pöördepunkt.", [58.3639, 25.5903], ["Lembitu","Sakala"]],
+      [1219, "Taani vallutus Tallinna all", "Valdemar II ja Andreas Sunesen vallutavad Tallinna (Lindanise).", [59.4370, 24.7536], ["Valdemar II","Sunesen","Tallinn"]],
+      [1220, "Lihula lahing", "Saarlased löövad Rootsi vägesid ja hävitavad Lihula linnuse.", [58.6850, 23.8433], ["Saarlased","Rootslased","Lihula"]],
+      [1222, "Eestlaste ülestõus", "Eestlased püüavad linnuseid tagasi saada (nt Ugandis).", [58.3776, 26.7290], ["Ülestõus","Ugandi"]],
+      [1224, "Tartu vallutamine", "Sakslased võtavad Tartu ja kindlustavad võimu.", [58.3776, 26.7290], ["Tartu"]],
+      [1227, "Muhu ja Saaremaa alistamine", "Saarlaste alistumine lõpetab kroonika sündmused.", [58.6050, 23.2483], ["Muhu","Saaremaa"]]
+    ];
+
+    // Lihtsustatud liikumiste 'marsruudid' (jooned), seotud aastatega
+    const ROUTES = [
+      {year:1219, pts:[[57.6348,18.2948],[59.4370,24.7536]], label:"Ojamaa → Tallinn (Taani retk)"},
+      {year:1210, pts:[[56.9496,24.1052],[57.4833,25.9667]], label:"Riia → Ümera"},
+      {year:1217, pts:[[56.9496,24.1052],[58.3639,25.5903]], label:"Riia → Sakala (Madisepäev)"},
+      {year:1224, pts:[[56.9496,24.1052],[58.3776,26.7290]], label:"Riia → Tartu"},
+      {year:1227, pts:[[59.4370,24.7536],[58.6050,23.2483],[58.4840,22.6135]], label:"Tallinn → Muhu → Saaremaa"}
+    ];
+
+    // --- Kaart ---
+    const map = L.map('map').setView([58.5,25.0], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // Markerite ja joonte kihid
+    const markerLayer = L.layerGroup().addTo(map);
+    const routeLayer = L.layerGroup().addTo(map);
+
+    // Ehitame markerid ette (aasta alusel kuvame/peidame)
+    const markers = EVENTS.map(([year,title,desc,[lat,lon],tags]) => {
+      const m = L.circleMarker([lat,lon], {radius:6, color:'#3b82f6', fillColor:'#60a5fa', fillOpacity:0.85});
+      m.bindPopup(`<b>${year} – ${title}</b><br>${desc}`);
+      m._meta = {year, title, desc, lat, lon, tags};
+      return m;
+    });
+
+    function renderYear(y){
+      // Uuenda silt
+      document.getElementById('yearLabel').textContent = y;
+      // Tühjenda kihid
+      markerLayer.clearLayers();
+      routeLayer.clearLayers();
+      // Lisa käesoleva aastani (<= y) sündmused
+      const visible = markers.filter(m => m._meta.year <= y);
+      visible.forEach(m => markerLayer.addLayer(m));
+      // Joonista marsruudid, mis on samal aastal või varem
+      ROUTES.filter(r => r.year <= y).forEach(r => {
+        L.polyline(r.pts, {color:'#ef4444', weight:3, opacity:0.8}).addTo(routeLayer).bindTooltip(r.label);
+      });
+      // Uuenda loetelu
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      const items = EVENTS.filter(e => e[0] === y);
+      document.getElementById('count').textContent = items.length ? `(${items.length})` : '(0)';
+      items.forEach(([year,title,desc,[lat,lon],tags]) => {
+        const li = document.createElement('li');
+        li.className = 'event';
+        li.innerHTML = `<div><b>${year} – ${title}</b></div><div class="muted">${desc}</div>`;
+        if(tags?.length){
+          const chips = document.createElement('div');
+          chips.className = 'chips';
+          tags.forEach(t => {
+            const span = document.createElement('span');
+            span.className = 'chip';
+            span.textContent = t;
+            chips.appendChild(span);
+          });
+          li.appendChild(chips);
+        }
+        li.addEventListener('click', () => {
+          map.setView([lat,lon], 7);
+        });
+        list.appendChild(li);
+      });
+      // Sobita vaade
+      if(visible.length){
+        const group = L.featureGroup(visible);
+        map.fitBounds(group.getBounds().pad(0.2), {animate:false});
+      }
+    }
+
+    // Slider + nupud
+    const slider = document.getElementById('year');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const showAllBtn = document.getElementById('showAll');
+    const resetBtn = document.getElementById('reset');
+
+    slider.addEventListener('input', e => renderYear(parseInt(e.target.value,10)));
+    prevBtn.addEventListener('click', () => {
+      const y = Math.max(parseInt(slider.min,10), parseInt(slider.value,10)-1); slider.value = y; renderYear(y);
+    });
+    nextBtn.addEventListener('click', () => {
+      const y = Math.min(parseInt(slider.max,10), parseInt(slider.value,10)+1); slider.value = y; renderYear(y);
+    });
+    showAllBtn.addEventListener('click', () => { slider.value = slider.max; renderYear(parseInt(slider.max,10)); });
+    resetBtn.addEventListener('click', () => { slider.value = slider.min; renderYear(parseInt(slider.min,10)); });
+
+    // Esmane render
+    renderYear(parseInt(slider.value,10));
+  </script>
+</body>
+</html>
